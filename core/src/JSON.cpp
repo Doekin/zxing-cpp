@@ -5,11 +5,12 @@
 
 #include "JSON.h"
 
-#include <algorithm>
+#include "ZXAlgorithms.h"
+
 #include <string_view>
 
 // This code is trying to find the value of a key-value pair in a string of those.
-// The input could be valid JSON, like '{"key": "val"}' or a stipped down version like
+// The input could be valid JSON, like '{"key": "val"}' or a stripped down version like
 // 'key:val'. This is also compatible with the string serialization of a python dictionary.
 // For convenience, also 'key=val' is supported, key is checked case insensitive and '_' is ignored.
 // This could easily be done with the following regex (see below).
@@ -25,8 +26,6 @@
 
 static constexpr auto PATTERN =
 	ctll::fixed_string{R"(["']?([[:alpha:]][[:alnum:]]*)["']?\s*(?:[:]\s*["']?([[:alnum:]]+)["']?)?(?:,|\}|$))"};
-#else
-#include "ZXAlgorithms.h"
 #endif
 
 namespace ZXing {
@@ -34,37 +33,15 @@ namespace ZXing {
 // Trim whitespace and quotes/braces from both ends
 inline std::string_view Trim(std::string_view sv)
 {
-	constexpr auto ws = " \t\n\r\"'{}";
-	while (sv.size() && Contains(ws, sv.back()))
-		sv.remove_suffix(1);
-	while (sv.size() && Contains(ws, sv.front()))
-		sv.remove_prefix(1);
-	return sv.empty() ? std::string_view() : sv;
+	return TrimWS(sv, " \t\n\r\"'{}");
 }
 
 inline bool IsEqualIgnoreCaseAndUnderscore(std::string_view a, std::string_view b)
 {
-	// return a.size() == b.size()
-	// 	   && std::equal(a.begin(), a.end(), b.begin(), [](uint8_t a, uint8_t b) { return std::tolower(a) == std::tolower(b); });
-
-	auto i = a.begin(), j = b.begin();
-	for (; i != a.end() && j != b.end(); ++i, ++j) {
-		if (*i == '_')
-			++i;
-		if (*j == '_')
-			++j;
-
-		if (i == a.end() || j == b.end())
-			break;
-
-		if (std::tolower(static_cast<uint8_t>(*i)) != std::tolower(static_cast<uint8_t>(*j)))
-			return false;
-	}
-
-	return i == a.end() && j == b.end();
+	return IsEqualIgnoreCaseAnd(a, b, "_");
 }
 
-std::string_view JsonGetStr(std::string_view json, std::string_view key)
+std::string_view JsonFind(std::string_view json, std::string_view key)
 {
 #ifdef ZXING_USE_CTRE
 	for (auto [ma, mk, mv] : ctre::search_all<PATTERN>(json))
@@ -75,6 +52,7 @@ std::string_view JsonGetStr(std::string_view json, std::string_view key)
 #else
 	json = Trim(json);
 
+	// TODO: use something like ForEachToken here?
 	while (!json.empty()) {
 		auto posComma = json.find(',');
 		auto pair = Trim(json.substr(0, posComma));

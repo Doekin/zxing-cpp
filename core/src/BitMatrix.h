@@ -18,7 +18,6 @@
 namespace ZXing {
 
 class BitArray;
-class ByteMatrix;
 
 /**
  * @brief A simple, fast 2D array of bits.
@@ -161,7 +160,7 @@ BitMatrix Inflate(BitMatrix&& input, int width, int height, int quietZone);
 
 /**
  * @brief Deflate (crop + subsample) a bit matrix
- * @param input matrix to be shrinked
+ * @param input matrix to be shrunk
  * @param width new width
  * @param height new height
  * @param top cropping starts at top row

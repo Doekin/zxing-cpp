@@ -3,21 +3,19 @@ cmake_minimum_required(VERSION 3.16)
 project (ZXing VERSION "2.3.0")
 set (ZXING_SONAME 3) # see https://github.com/zxing-cpp/zxing-cpp/issues/333
 
+option (ZXING_USE_BUNDLED_ZINT "Use the bundled libzint for barcode creation/writing" ON)
 foreach(format 1D AZTEC DATAMATRIX MAXICODE PDF417 QRCODE)
     option ("ZXING_ENABLE_${format}" "Enable support for ${format} barcodes" ON)
 endforeach()
 
-if (BUILD_SHARED_LIBS)
-    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+if (NOT DEFINED CMAKE_CXX_STANDARD)
+    set (CMAKE_CXX_STANDARD 20)
+    set (CMAKE_CXX_STANDARD_REQUIRED ON)
+    set (CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-if (DEFINED BUILD_READERS)
-    set (ZXING_READERS ${BUILD_READERS})
-    message (WARNING "zxing-cpp cmake options BUILD_... are deprecated, please switch to ZXING_... variant")
-endif()
-if (DEFINED BUILD_WRITERS)
-    set (ZXING_WRITERS ${BUILD_WRITERS})
-    message (WARNING "zxing-cpp cmake options BUILD_... are deprecated, please switch to ZXING_... variant")
+if (BUILD_SHARED_LIBS)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
 if (NOT DEFINED ZXING_WRITERS)
@@ -30,10 +28,10 @@ endif()
 
 set (ZXING_WRITERS_NEW OFF)
 set (ZXING_WRITERS_OLD OFF)
-if (ZXING_WRITERS MATCHES "OLD|ON")
+if (ZXING_WRITERS MATCHES "OLD")
     set (ZXING_WRITERS ON)
     set (ZXING_WRITERS_OLD ON)
-elseif (ZXING_WRITERS MATCHES "NEW")
+elseif (ZXING_WRITERS MATCHES "NEW|ON")
     set (ZXING_WRITERS ON)
     set (ZXING_WRITERS_NEW ON)
 elseif (ZXING_WRITERS MATCHES "BOTH")
@@ -46,30 +44,25 @@ if (BUILD_SHARED_LIBS)
     set (CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 endif()
 
+set (ZXING_USE_ZINT ${ZXING_WRITERS_NEW}) # see Version.h.in
+
 set (ZXING_PUBLIC_FLAGS
-    $<$<BOOL:${ZXING_EXPERIMENTAL_API}>:-DZXING_EXPERIMENTAL_API>
-    $<$<BOOL:${ZXING_WRITERS_NEW}>:-DZXING_USE_ZINT>
+    $<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus>
 )
-foreach(format 1D AZTEC DATAMATRIX MAXICODE PDF417 QRCODE)
-    list (APPEND ZXING_PUBLIC_FLAGS $<$<BOOL:${ZXING_ENABLE_${format}}>:-DZXING_WITH_${format}>)
-endforeach()
+
+set (ZXING_PRIVATE_FLAGS
+    -DZXING_INTERNAL
+    $<$<BOOL:${ZXING_UNIT_TESTS}>:-DZXING_BUILD_FOR_TEST>
+)
 
 if (WINRT)
-    set (ZXING_PUBLIC_FLAGS ${ZXING_PUBLIC_FLAGS}
+    list (APPEND ZXING_PUBLIC_FLAGS
         -DWINRT
     )
 endif()
-if (MSVC)
-    set (ZXING_PUBLIC_FLAGS ${ZXING_PUBLIC_FLAGS}
-        $<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus>
-    )
-endif()
 
-set (ZXING_PRIVATE_FLAGS
-    $<$<BOOL:${ZXING_UNIT_TESTS}>:-DZXING_BUILD_FOR_TEST>
-)
 if (MSVC)
-    set (ZXING_PRIVATE_FLAGS ${ZXING_PRIVATE_FLAGS}
+    list (APPEND ZXING_PRIVATE_FLAGS
         -D_SCL_SECURE_NO_WARNINGS
         -D_CRT_SECURE_NO_WARNINGS
         -D_CRT_NONSTDC_NO_WARNINGS
@@ -77,7 +70,7 @@ if (MSVC)
         /utf-8 # see https://github.com/zxing-cpp/zxing-cpp/issues/757
     )
 else()
-    set (ZXING_PRIVATE_FLAGS ${ZXING_PRIVATE_FLAGS}
+    list (APPEND ZXING_PRIVATE_FLAGS
         -Wall -Wextra -Wno-missing-braces -Werror=undef -Werror=return-type)
 endif()
 
@@ -90,7 +83,7 @@ include (CheckCXXCompilerFlag)
 set(FILE_PREFIX_ARG "-fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=")
 check_cxx_compiler_flag("${FILE_PREFIX_ARG}" HAS_FILE_PREFIX_ARG)
 if(HAS_FILE_PREFIX_ARG)
-    set(ZXING_PRIVATE_FLAGS ${ZXING_PRIVATE_FLAGS} "${FILE_PREFIX_ARG}")
+    list (APPEND ZXING_PRIVATE_FLAGS "${FILE_PREFIX_ARG}")
 endif()
 
 ################# Source files
@@ -98,19 +91,21 @@ endif()
 set (COMMON_FILES
     src/Barcode.h
     src/Barcode.cpp
+    src/BarcodeData.h
     src/BarcodeFormat.h
     src/BarcodeFormat.cpp
-    src/BitHacks.h
     src/BitMatrix.h
     src/BitMatrix.cpp
     src/BitMatrixIO.h
     src/BitMatrixIO.cpp
     src/ByteArray.h
-    src/ByteMatrix.h
     src/CharacterSet.h
     src/CharacterSet.cpp
+    src/CreateBarcode.h
+    src/CreateBarcode.cpp
     src/Content.h
     src/Content.cpp
+    src/ContentType.h
     src/DecoderResult.h
     src/DetectorResult.h
     src/ECI.h
@@ -130,6 +125,7 @@ set (COMMON_FILES
     src/ReaderOptions.h
     src/ReadBarcode.h
     src/ReadBarcode.cpp
+    src/SymbologyIdentifier.h
     src/Utf.h
     src/Utf.cpp
     src/WriteBarcode.h
@@ -139,7 +135,6 @@ set (COMMON_FILES
     src/ZXAlgorithms.h
     src/ZXConfig.h
     src/ZXTestSupport.h
-    src/ZXVersion.h # [[deprecated]]
     $<$<BOOL:${ZXING_C_API}>:src/ZXingC.h>
     $<$<BOOL:${ZXING_C_API}>:src/ZXingC.cpp>
 )
@@ -147,14 +142,10 @@ if (ZXING_READERS OR ZXING_WRITERS_OLD)
     set (COMMON_FILES ${COMMON_FILES}
         src/BitArray.h
         src/BitArray.cpp
-        src/Generator.h
         src/GenericGF.h
         src/GenericGF.cpp
         src/GenericGFPoly.h
         src/GenericGFPoly.cpp
-        src/TextUtfEncoding.h # [[deprecated]]
-        src/TextUtfEncoding.cpp # [[deprecated]]
-        src/Scope.h
     )
 endif()
 if (ZXING_READERS OR ZXING_WRITERS_NEW)
@@ -172,8 +163,6 @@ if (ZXING_READERS)
         src/BitSource.cpp
         src/ConcentricFinder.h
         src/ConcentricFinder.cpp
-        src/DecodeHints.h
-        $<$<BOOL:${BUILD_SHARED_LIBS}>:src/DecodeHints.cpp> # [[deprecated]]
         src/GlobalHistogramBinarizer.h
         src/GlobalHistogramBinarizer.cpp
         src/GridSampler.h
@@ -190,10 +179,12 @@ if (ZXING_READERS)
         src/ReedSolomonDecoder.h
         src/ReedSolomonDecoder.cpp
         src/RegressionLine.h
-        src/Result.h # [[deprecated]]
         src/ResultPoint.h
         src/ResultPoint.cpp
         src/StructuredAppend.h
+        src/StdGenerator.h
+        src/StdPrint.h
+        src/StdScope.h
         src/TextDecoder.h
         src/TextDecoder.cpp
         src/ThresholdBinarizer.h
@@ -212,7 +203,6 @@ endif()
 
 if (ZXING_WRITERS_OLD)
     set (COMMON_FILES ${COMMON_FILES}
-        src/ByteMatrix.h
         src/ReedSolomonEncoder.h
         src/ReedSolomonEncoder.cpp
         src/MultiFormatWriter.h
@@ -224,31 +214,22 @@ endif()
 set (PUBLIC_HEADERS
     src/Barcode.h
     src/BarcodeFormat.h
-    src/BitHacks.h
-    src/ByteArray.h
     src/CharacterSet.h
-    src/Content.h
+    src/ContentType.h
+    src/CreateBarcode.h
     src/Error.h
-    src/Flags.h
     src/GTIN.h
     src/ImageView.h
     src/Point.h
     src/Quadrilateral.h
-    src/Range.h # re-evaluate for 3.0
     src/ReadBarcode.h
     src/ReaderOptions.h
-    src/StructuredAppend.h
-    src/TextUtfEncoding.h # [[deprecated]]
+    src/WriteBarcode.h
     src/ZXingCpp.h
-    src/ZXAlgorithms.h
-    src/ZXVersion.h # [[deprecated]]
     $<$<BOOL:${ZXING_C_API}>:${CMAKE_CURRENT_SOURCE_DIR}/src/ZXingC.h>
-    $<$<BOOL:${ZXING_EXPERIMENTAL_API}>:${CMAKE_CURRENT_SOURCE_DIR}/src/WriteBarcode.h>
 )
 if (ZXING_READERS)
     set (PUBLIC_HEADERS ${PUBLIC_HEADERS}
-        src/DecodeHints.h # [[deprecated]]
-        src/Result.h # [[deprecated]]
     )
 endif()
 if (ZXING_WRITERS_OLD)
@@ -551,7 +532,7 @@ if (ZXING_WRITERS_NEW)
     else()
         include(../zxing.cmake)
         zxing_add_package(zint zint https://github.com/zint/zint.git 2.16.0)
-        target_link_libraries (ZXing PRIVATE zint)
+        target_link_libraries (ZXing PRIVATE $<IF:$<BOOL:${ZINT_STATIC}>,zint-static,zint>)
     endif()
 endif()
 
@@ -573,11 +554,10 @@ set_target_properties(ZXing PROPERTIES PUBLIC_HEADER "${PUBLIC_HEADERS}")
 
 set(PRECOMPILE_HEADERS ${PUBLIC_HEADERS})
 list(REMOVE_ITEM PRECOMPILE_HEADERS "$<$<BOOL:${ZXING_C_API}>:${CMAKE_CURRENT_SOURCE_DIR}/src/ZXingC.h>")
-list(REMOVE_ITEM PRECOMPILE_HEADERS src/DecodeHints.h) # [[deprecated]]
-list(REMOVE_ITEM PRECOMPILE_HEADERS src/Result.h)      # [[deprecated]]
-list(REMOVE_ITEM PRECOMPILE_HEADERS src/ZXVersion.h)   # [[deprecated]]
-target_precompile_headers(ZXing PRIVATE ${PRECOMPILE_HEADERS})
-set_source_files_properties(src/DecodeHints.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+list(APPEND PRECOMPILE_HEADERS "src/BarcodeData.h" "src/Content.h" "src/Range.h")
+if (NOT ZXING_DISABLE_PCH)
+    target_precompile_headers(ZXing PRIVATE ${PRECOMPILE_HEADERS})
+endif()
 
 if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
     # The following is a list of translation units that fulfill two criteria regarding the use of -Os vs -O3:
@@ -590,6 +570,7 @@ if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
         src/Barcode.cpp
         src/BarcodeFormat.cpp
         src/BitMatrixIO.cpp
+        src/CreateBarcode.cpp
         src/Error.cpp
         src/GTIN.cpp
         src/HRI.cpp
@@ -653,9 +634,9 @@ install (
 )
 
 IF (NOT WIN32 OR MINGW)
-    if (${ZXING_EXPERIMENTAL_API})
-        set(COMPILE_FLAGS "-DZXING_EXPERIMENTAL_API")
-    endif()
+    # if (${ZXING_EXPERIMENTAL_API})
+    #     set(COMPILE_FLAGS "-DZXING_EXPERIMENTAL_API")
+    # endif()
     configure_file(zxing.pc.in zxing.pc @ONLY)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/zxing.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 ENDIF()

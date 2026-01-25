@@ -5,6 +5,7 @@
 
 #include "Content.h"
 
+#include "ByteArray.h"
 #include "CharacterSet.h"
 #include "ECI.h"
 #include "HRI.h"
@@ -57,7 +58,8 @@ void Content::switchEncoding(ECI eci, bool isECI)
 
 Content::Content() {}
 
-Content::Content(ByteArray&& bytes, SymbologyIdentifier si) : bytes(std::move(bytes)), symbology(si) {}
+Content::Content(ByteArray&& bytes, SymbologyIdentifier si, CharacterSet defaultCharset)
+	: bytes(std::move(bytes)), symbology(si), defaultCharset(defaultCharset) {}
 
 void Content::switchEncoding(CharacterSet cs)
 {
@@ -114,7 +116,7 @@ std::string Content::render(bool withECI) const
 
 	ForEachECIBlock([&](ECI eci, int begin, int end) {
 		// basic idea: if IsText(eci), we transcode it to UTF8, otherwise we treat it as binary but
-		// transcoded it to valid UTF8 bytes seqences representing the code points 0-255. The eci we report
+		// transcoded it to valid UTF8 bytes sequences representing the code points 0-255. The eci we report
 		// back to the caller by inserting their "\XXXXXX" ECI designator is UTF8 for text and
 		// the original ECI for everything else.
 		// first determine how to decode the content (use fallback if unknown)
@@ -138,7 +140,7 @@ std::string Content::render(bool withECI) const
 	});
 
 	return res;
-#elif defined(ZXING_EXPERIMENTAL_API) && defined(ZXING_USE_ZINT)
+#elif defined(ZXING_USE_ZINT)
 	assert(!utf8Cache.empty());
 	if (!withECI)
 		return std::accumulate(utf8Cache.begin(), utf8Cache.end(), std::string());
@@ -183,7 +185,7 @@ std::string Content::text(TextMode mode) const
 	case TextMode::ECI: return render(true);
 	case TextMode::HRI:
 		switch (type()) {
-#if defined(ZXING_READERS) || (defined(ZXING_EXPERIMENTAL_API) && defined(ZXING_USE_ZINT))
+#if defined(ZXING_READERS) || defined(ZXING_USE_ZINT)
 		case ContentType::GS1: {
 			auto plain = render(false);
 			auto hri = HRIFromGS1(plain);
@@ -194,8 +196,9 @@ std::string Content::text(TextMode mode) const
 #endif
 		default: return text(TextMode::Escaped);
 		}
-	case TextMode::Hex: return ToHex(bytes);
 	case TextMode::Escaped: return EscapeNonGraphical(render(false));
+	case TextMode::Hex: return ToHex(bytes);
+	case TextMode::HexECI: return ToHex(bytesECI());
 	}
 
 	return {}; // silence compiler warning
@@ -235,7 +238,7 @@ ByteArray Content::bytesECI() const
 	return res;
 }
 
-#if defined(ZXING_READERS) || (defined(ZXING_EXPERIMENTAL_API) && defined(ZXING_USE_ZINT))
+#if defined(ZXING_READERS) || defined(ZXING_USE_ZINT)
 /**
 * @param bytes bytes encoding a string, whose encoding should be guessed
 * @return name of guessed encoding; at the moment will only guess one of:
@@ -414,7 +417,7 @@ CharacterSet GuessTextEncoding(ByteView bytes, CharacterSet fallback = Character
 
 CharacterSet Content::guessEncoding() const
 {
-#if defined(ZXING_READERS) || (defined(ZXING_EXPERIMENTAL_API) && defined(ZXING_USE_ZINT))
+#if defined(ZXING_READERS) || defined(ZXING_USE_ZINT)
 	// assemble all blocks with unknown encoding
 	ByteArray input;
 	ForEachECIBlock([&](ECI eci, int begin, int end) {
@@ -443,7 +446,7 @@ ContentType Content::type() const
 	if (symbology.aiFlag == AIFlag::GS1)
 		return ContentType::GS1;
 
-	// check for the absolut minimum of a ISO 15434 conforming message ("[)>" + RS + digit + digit)
+	// check for the absolute minimum of a ISO 15434 conforming message ("[)>" + RS + digit + digit)
 	if (bytes.size() > 6 && bytes.asString(0, 4) == "[)>\x1E" && std::isdigit(bytes[4]) && std::isdigit(bytes[5]))
 		return ContentType::ISO15434;
 

@@ -7,7 +7,8 @@
 #include "ODCode39Reader.h"
 
 #include "ReaderOptions.h"
-#include "Barcode.h"
+#include "BarcodeData.h"
+#include "SymbologyIdentifier.h"
 #include "ZXAlgorithms.h"
 
 #include <array>
@@ -73,14 +74,14 @@ std::string DecodeCode39AndCode93FullASCII(std::string encoded, const char ctrl[
 	return encoded;
 }
 
-Barcode Code39Reader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<RowReader::DecodingState>&) const
+BarcodeData Code39Reader::decodePattern(int rowNumber, PatternView& next, std::unique_ptr<RowReader::DecodingState>&) const
 {
 	// minimal number of characters that must be present (including start, stop and checksum characters)
 	int minCharCount = _opts.validateCode39CheckSum() ? 4 : 3;
 	auto isStartOrStopSymbol = [](char c) { return c == '*'; };
 
 	// provide the indices with the narrow bars/spaces which have to be equally wide
-	constexpr auto START_PATTERN = FixedSparcePattern<CHAR_LEN, 6>{0, 2, 3, 5, 7, 8};
+	constexpr auto START_PATTERN = FixedSparsePattern<CHAR_LEN, 6>{0, 2, 3, 5, 7, 8};
 	// the spec requires a quiet zone of 10x narrow bar width, so with a 1:3 narrow:wide ratio
 	// and 3w+6n, a single character is 15x wide, so the below scale would need to be 2/3.
 	// This value used to be 1/2 but real-world feedback suggests 1/3 is preferable.
@@ -138,7 +139,7 @@ Barcode Code39Reader::decodePattern(int rowNumber, PatternView& next, std::uniqu
 	SymbologyIdentifier symbologyIdentifier = {'A', symbologyModifiers[(int)hasValidCheckSum + 2 * (int)hasFullASCII]};
 
 	int xStop = next.pixelsTillEnd();
-	return {std::move(txt), rowNumber, xStart, xStop, BarcodeFormat::Code39, symbologyIdentifier, error};
+	return LinearBarcode(BarcodeFormat::Code39, std::move(txt), rowNumber, xStart, xStop, symbologyIdentifier, error);
 }
 
 } // namespace ZXing::OneD

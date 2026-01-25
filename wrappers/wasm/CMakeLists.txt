@@ -1,26 +1,13 @@
-cmake_minimum_required (VERSION 3.14)
+cmake_minimum_required (VERSION 3.16)
 
 project (ZXingWasm)
 
 include (${CMAKE_CURRENT_SOURCE_DIR}/../../zxing.cmake)
 zxing_add_package_stb()
 
-set (CMAKE_CXX_STANDARD 20)
-
-option (ZXING_WRITERS "Build with writer support (encoders)" ON)
+option (ZXING_WRITERS "Build with writer support (encoders)" OLD)
 option (ZXING_READERS "Build with reader support (decoders)" ON)
 set    (ZXING_EMSCRIPTEN_ENVIRONMENT "web" CACHE STRING "Optimize build for given emscripten runtime environment (web/node/shell/worker)")
-
-# provide backward compatibility for deprecated BUILD_... options
-if (DEFINED BUILD_READERS)
-    set (ZXING_READERS ${BUILD_READERS})
-endif()
-if (DEFINED BUILD_WRITERS)
-    set (ZXING_WRITERS ${BUILD_WRITERS})
-endif()
-if (DEFINED BUILD_EMSCRIPTEN_ENVIRONMENT)
-    set (ZXING_EMSCRIPTEN_ENVIRONMENT ${BUILD_EMSCRIPTEN_ENVIRONMENT})
-endif()
 
 if (NOT CMAKE_BUILD_TYPE)
     set (CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)

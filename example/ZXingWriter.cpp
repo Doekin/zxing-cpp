@@ -3,7 +3,10 @@
 */
 // SPDX-License-Identifier: Apache-2.0
 
-#ifdef ZXING_EXPERIMENTAL_API
+// #define USE_OLD_WRITER_API
+
+#ifndef USE_OLD_WRITER_API
+#include "CreateBarcode.h"
 #include "WriteBarcode.h"
 #else
 #include "BitMatrix.h"
@@ -28,33 +31,29 @@ using namespace ZXing;
 static void PrintUsage(const char* exePath)
 {
 	std::cout << "Usage: " << exePath
-			  << " [-size <width/height>] [-options <creator-options>] [-noqz] [-hrt] <format> <text> <output>\n"
-			  << "    -size      Size of generated image\n"
+			  << " [-options <creator-options>] [-scale <factor>] [-binary] [-noqz] [-hrt] [-invert] <format> <text> <output>\n"
+			  << "    -options   Comma separated list of format specific options and flags\n"
+			  << "    -scale     module size of generated image / negative numbers mean 'target size in pixels'\n"
 //			  << "    -encoding  Encoding used to encode input text\n"
 			  << "    -binary    Interpret <text> as a file name containing binary data\n"
 			  << "    -noqz      Print barcode witout quiet zone\n"
 			  << "    -hrt       Print human readable text below the barcode (if supported)\n"
 			  << "    -invert    Invert colors (switch black and white)\n"
-			  << "    -options   Comma separated list of symbology specific options and flags\n"
 			  << "    -help      Print usage information\n"
 			  << "    -version   Print version information\n"
 			  << "\n"
 			  << "Supported formats are:\n";
-#ifdef ZXING_EXPERIMENTAL_API
-	for (auto f : BarcodeFormats::all())
-#else
-	for (auto f : BarcodeFormatsFromString("Aztec Codabar Code39 Code93 Code128 DataMatrix EAN8 EAN13 ITF PDF417 QRCode UPCA UPCE"))
-#endif
+	for (auto f : BarcodeFormats::list(BarcodeFormat::AllCreatable))
 		std::cout << "    " << ToString(f) << "\n";
 
-	std::cout << "Format can be lowercase letters, with or without '-'.\n"
+	std::cout << "Format can be lowercase letters, with or without any of ' -_/'.\n"
 			  << "Output format is determined by file name, supported are png, jpg and svg.\n";
 }
 
 struct CLI
 {
-	BarcodeFormat format;
-	int sizeHint = 0;
+	BarcodeFormat format = BarcodeFormat::None;
+	int scale = 0;
 	std::string input;
 	std::string outPath;
 	std::string options;
@@ -71,10 +70,10 @@ static bool ParseOptions(int argc, char* argv[], CLI& cli)
 	int nonOptArgCount = 0;
 	for (int i = 1; i < argc; ++i) {
 		auto is = [&](const char* str) { return strncmp(argv[i], str, strlen(argv[i])) == 0; };
-		if (is("-size")) {
+		if (is("-scale")) {
 			if (++i == argc)
 				return false;
-			cli.sizeHint = std::stoi(argv[i]);
+			cli.scale = std::stoi(argv[i]);
 		// } else if (is("-encoding")) {
 		// 	if (++i == argc)
 		// 		return false;
@@ -100,9 +99,10 @@ static bool ParseOptions(int argc, char* argv[], CLI& cli)
 			std::cout << "ZXingWriter " << ZXING_VERSION_STR << "\n";
 			exit(0);
 		} else if (nonOptArgCount == 0) {
-			cli.format = BarcodeFormatFromString(argv[i]);
-			if (cli.format == BarcodeFormat::None) {
-				std::cerr << "Unrecognized format: " << argv[i] << std::endl;
+			try {
+				cli.format = BarcodeFormatFromString(argv[i]);
+			} catch (const std::exception& e) {
+				std::cerr << "Error: " << e.what() << "\n\n";
 				return false;
 			}
 			++nonOptArgCount;
@@ -149,17 +149,19 @@ int main(int argc, char* argv[])
 	}
 
 	try {
-#ifdef ZXING_EXPERIMENTAL_API
+#if 1
 		auto cOpts = CreatorOptions(cli.format, cli.options);
 		auto barcode = cli.inputIsFile ? CreateBarcodeFromBytes(ReadFile(cli.input), cOpts) : CreateBarcodeFromText(cli.input, cOpts);
 
-		auto wOpts = WriterOptions().sizeHint(cli.sizeHint).addQuietZones(cli.addQZs).addHRT(cli.addHRT).invert(cli.invert).rotate(0);
+		auto wOpts = WriterOptions().scale(cli.scale).addQuietZones(cli.addQZs).addHRT(cli.addHRT).invert(cli.invert).rotate(0);
 		auto bitmap = WriteBarcodeToImage(barcode, wOpts);
 
 		if (cli.verbose) {
+			std::cout.setf(std::ios::boolalpha);
 			std::cout << "Text:       \"" << barcode.text() << "\"\n"
-					  << "Bytes:      " << ToHex(barcode.bytes()) << "\n"
+					  << "Bytes:      " << barcode.text(TextMode::Hex) << "\n"
 					  << "Format:     " << ToString(barcode.format()) << "\n"
+					  << "Symbology:  " << ToString(barcode.symbology()) << "\n"
 					  << "Identifier: " << barcode.symbologyIdentifier() << "\n"
 					  << "Content:    " << ToString(barcode.contentType()) << "\n"
 					  << "HasECI:     " << barcode.hasECI() << "\n"
@@ -167,10 +169,10 @@ int main(int argc, char* argv[])
 					  << "Rotation:   " << barcode.orientation() << " deg\n"
 					  << "IsMirrored: " << barcode.isMirrored() << "\n"
 					  << "IsInverted: " << barcode.isInverted() << "\n"
-					  << "ecLevel:    " << barcode.ecLevel() << "\n";
+					  << "ECLevel:    " << barcode.ecLevel() << "\n";
 			std::cout << WriteBarcodeToUtf8(barcode, wOpts);
 		}
-#else
+#else // 'old' writer API (non zint based)
 		auto writer = MultiFormatWriter(cli.format).setMargin(cli.addQZs ? 10 : 0);
 
 		BitMatrix matrix;
@@ -180,10 +182,10 @@ int main(int argc, char* argv[])
 			for (uint8_t c : file)
 				bytes.push_back(c);
 			writer.setEncoding(CharacterSet::BINARY);
-			matrix = writer.encode(bytes, cli.sizeHint, std::clamp(cli.sizeHint / 2, 50, 300));
+			matrix = writer.encode(bytes, cli.scale, std::clamp(cli.scale / 2, 50, 300));
 		} else {
 			writer.setEncoding(CharacterSet::UTF8);
-			matrix = writer.encode(cli.input, cli.sizeHint, std::clamp(cli.sizeHint / 2, 50, 300));
+			matrix = writer.encode(cli.input, cli.scale, std::clamp(cli.scale / 2, 50, 300));
 		}
 		auto bitmap = ToMatrix<uint8_t>(matrix);
 #endif
@@ -195,7 +197,7 @@ int main(int argc, char* argv[])
 		} else if (ext == "jpg" || ext == "jpeg") {
 			success = stbi_write_jpg(cli.outPath.c_str(), bitmap.width(), bitmap.height(), 1, bitmap.data(), 0);
 		} else if (ext == "svg") {
-#ifdef ZXING_EXPERIMENTAL_API
+#ifndef USE_OLD_WRITER_API
 			success = (std::ofstream(cli.outPath) << WriteBarcodeToSVG(barcode, wOpts)).good();
 #else
 			success = (std::ofstream(cli.outPath) << ToSVG(matrix)).good();

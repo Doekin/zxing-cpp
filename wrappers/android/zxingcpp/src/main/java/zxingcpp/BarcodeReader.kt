@@ -58,6 +58,7 @@ public class BarcodeReader(public var options: Options = Options()) {
 		var tryRotate: Boolean = false,
 		var tryInvert: Boolean = false,
 		var tryDownscale: Boolean = false,
+		var tryDenoise: Boolean = false,
 		var isPure: Boolean = false,
 		var binarizer: Binarizer = Binarizer.LOCAL_AVERAGE,
 		var downscaleFactor: Int = 3,
@@ -69,8 +70,6 @@ public class BarcodeReader(public var options: Options = Options()) {
 		var validateCode39CheckSum: Boolean = false,
 		@Deprecated("See https://github.com/zxing-cpp/zxing-cpp/discussions/704")
 		var validateITFCheckSum: Boolean = false,
-		@Deprecated("See https://github.com/zxing-cpp/zxing-cpp/discussions/704")
-		var returnCodabarStartEnd: Boolean = false,
 		var returnErrors: Boolean = false,
 		var eanAddOnSymbol: EanAddOnSymbol = EanAddOnSymbol.IGNORE,
 		var textMode: TextMode = TextMode.HRI,
